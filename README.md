@@ -1,4 +1,4 @@
-This is a forked version of openfl-swiftsuspenders. It is forked because there are lots of things that are missing in the reflector, DescribeTypeRTTIReflector.hx. I only implemented named injection for the public fields and properties, but there's still work needed for method injections.
+This is a forked version of openfl-swiftsuspenders. It is forked because there are lots of things missing in the reflector, DescribeTypeRTTIReflector.hx. I only implemented named injection for the public fields and properties, but there's still work needed for method injections.
 
 The injection meta tags should be added as following:
 
