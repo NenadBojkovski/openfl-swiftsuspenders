@@ -11,7 +11,6 @@ package org.swiftsuspenders.reflection;
 //import flash.utils.describeType;
 import haxe.rtti.Meta;
 import haxe.xml.Fast;
-import openfl.errors.Error;
 import org.swiftsuspenders.utils.CallProxy;
 
 import org.swiftsuspenders.errors.InjectorError;
@@ -75,11 +74,13 @@ class DescribeTypeRTTIReflector implements Reflector
 			return Array;
 		}
 		
-		//#if cpp
+		#if cpp
 			return Type.getClass(value);
-	//	#else
-		//	return value.constructor;
-		//#end
+		#elseif js
+			return value.__class__;
+		#else
+			return value.constructor;
+		#end
 	}
 
 	public function getFQCN(value :Dynamic, replaceColons:Bool = false):String
@@ -256,7 +257,7 @@ class DescribeTypeRTTIReflector implements Reflector
 	}
 
 	private function hasInjectMetaTag(element: Fast): Bool {
-		return element.hasNode.meta && element.node.meta.hasNode.m && element.node.meta.node.m.has.n && (element.node.meta.node.m.att.n == 'inject');				
+		return element.hasNode.meta && element.node.meta.hasNode.m && element.node.meta.node.m.has.n && (element.node.meta.node.m.att.n == 'inject');
 	}
 
 	private function getInjectParameters(element: Fast): Map<String,String> {
@@ -346,13 +347,13 @@ class DescribeTypeRTTIReflector implements Reflector
 				if (pathFast.has.path) {
 					mappingId = pathFast.att.path;
 					mappingId += '|';
-				}		
+				}
 				var injectParameters:Map<Dynamic,Dynamic> = getInjectParameters(elem);
 				mappingId += injectParameters.get("name") != null ? injectParameters.get("name") : "";
 				var optional: String = injectParameters.get("optional");
 				var injectionPoint:PropertyInjectionPoint = new PropertyInjectionPoint(mappingId,propertyName, optional == 'true', injectParameters);
 				description.addInjectionPoint(injectionPoint);
-			}				
+			}
 		}
 	}
 
