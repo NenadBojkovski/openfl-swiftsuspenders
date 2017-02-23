@@ -11,7 +11,6 @@ package org.swiftsuspenders.reflection;
 //import flash.utils.describeType;
 import haxe.rtti.Meta;
 import haxe.xml.Fast;
-import openfl.errors.Error;
 import org.swiftsuspenders.utils.CallProxy;
 
 import org.swiftsuspenders.errors.InjectorError;
@@ -77,6 +76,8 @@ class DescribeTypeRTTIReflector implements Reflector
 		
 		#if cpp
 			return Type.getClass(value);
+		#elseif js
+			return value.__class__;
 		#else
 			return value.constructor;
 		#end
@@ -168,7 +169,6 @@ class DescribeTypeRTTIReflector implements Reflector
 		#else 
 			var type:Class<Dynamic> = _type;
 		#end
-		
 		rtti = untyped type.__rtti;
 		if (rtti == null) {
 			var _isInterface = isInterface(type);
@@ -176,6 +176,7 @@ class DescribeTypeRTTIReflector implements Reflector
 			
 			if (!_isInterface && !_inWhitelist) {
 				//trace("Warning: " + CallProxy.getClassName(type) + " missing @:rtti matadata");
+				return null;
 			}
 		}
 		
@@ -195,6 +196,9 @@ class DescribeTypeRTTIReflector implements Reflector
 		}
 		
 		var description:TypeDescription = new TypeDescription(false);
+		if (extendTypeDescription != null) {
+			description.injectionPoints = extendTypeDescription.injectionPoints;
+		}
 		addCtorInjectionPoint(description, type); // TEMP
 		addFieldInjectionPoints(description, type); // FIX
 		addMethodInjectionPoints(description, type); // FIX
@@ -235,6 +239,41 @@ class DescribeTypeRTTIReflector implements Reflector
 			else return false;
 		}
 	}
+
+	private function isMethod(element: Fast): Bool {
+		return element != null && element.has.set && (element.att.set == 'method');
+	}
+
+	private function isProperty(element: Fast): Bool {
+		return element != null && element.has.get && element.has.set && (element.att.set != 'method');
+	}
+
+	private function isField(element: Fast): Bool {
+		return element != null && (element.name != 'meta') && !element.has.set;
+	}
+
+	private function isPublicMember(element: Fast): Bool {
+		return element != null && element.name != 'meta' && element.x.exists('public') && element.x.get('public') == '1';
+	}
+
+	private function hasInjectMetaTag(element: Fast): Bool {
+		return element.hasNode.meta && element.node.meta.hasNode.m && element.node.meta.node.m.has.n && (element.node.meta.node.m.att.n == 'inject');
+	}
+
+	private function getInjectParameters(element: Fast): Map<String,String> {
+		var attributes: Map<String,String> = new Map<String,String>();
+		if (hasInjectMetaTag(element)){
+			if (element.node.meta.node.m.hasNode.e) {
+				for (node in element.node.meta.node.m.nodes.e) {
+					var nodeValue: String = StringTools.replace(node.innerData, '"', '');
+					var keyValue = nodeValue.split('=');
+					attributes[keyValue[0]] = keyValue[1];
+				}
+			}
+		}
+		return attributes;
+	}
+
 
 	//----------------------         Private / Protected Methods        ----------------------//
 	private function addCtorInjectionPoint(description:TypeDescription, type:Class<Dynamic>):Void
@@ -300,78 +339,22 @@ class DescribeTypeRTTIReflector implements Reflector
 	
 	private function addFieldInjectionPoints(description:TypeDescription, type:Class<Dynamic>):Void
 	{
-		// CHECK
-		var metaFields = Meta.getFields(type);
-		var fields = Reflect.fields(metaFields);
-		var injectFields:Array<String> = [];
-		
-		
-		
-		for (value in fields)
-		{
-			
-			var metaFields1 = Reflect.getProperty(metaFields, value);
-			var fields1 = Reflect.fields(metaFields1);
-			if (fields1[0] == 'inject') {
-				injectFields.push(value);
-			}
-			
-			
-		}
-		
-		if (extendTypeDescription != null) {
-			description.injectionPoints = extendTypeDescription.injectionPoints;
-		}
-		
-		for (propertyName in injectFields) {
-			var optional = false;
-			var injectParams:Array<String> = Reflect.getProperty(Reflect.getProperty(metaFields, propertyName), "inject");
-			if (injectParams != null){
-				for (i in 0...injectParams.length) 
-				{
-					if (injectParams[i].indexOf("optional=") != -1) {
-						if (injectParams[i].split("optional=")[1].toLowerCase() == 'true') {
-							optional = true;
-						}
-					}
+		for (elem in _currentFactoryXMLFast.elements) {
+			if (isPublicMember(elem) && (isField(elem) || isProperty(elem)) && hasInjectMetaTag(elem)) {
+				var propertyName:String = elem.name;
+				var mappingId:String = "";
+				var pathFast = new Fast(elem.x.firstElement());
+				if (pathFast.has.path) {
+					mappingId = pathFast.att.path;
+					mappingId += '|';
 				}
+				var injectParameters:Map<Dynamic,Dynamic> = getInjectParameters(elem);
+				mappingId += injectParameters.get("name") != null ? injectParameters.get("name") : "";
+				var optional: String = injectParameters.get("optional");
+				var injectionPoint:PropertyInjectionPoint = new PropertyInjectionPoint(mappingId,propertyName, optional == 'true', injectParameters);
+				description.addInjectionPoint(injectionPoint);
 			}
-			
-			var mappingId:String = "";
-			for (elem in _currentFactoryXMLFast.elements) {
-				if (elem.name == propertyName) {
-					// FIX missing key 
-					var pathFast = new Fast(elem.x.firstElement());
-					if (pathFast.has.path) {
-						mappingId = pathFast.att.path;
-						mappingId += '|';// + node.arg.(@key == 'name').attribute('value');
-					}
-				}
-			}
-			
-			//var optional = Reflect.getProperty(injectParams, "optional");
-			
-			// FIX missing injectParameters
-			//var injectParameters:Map<String,Dynamic> = extractNodeParameters(node.arg);
-			var injectParameters = new Map<String,Dynamic>();
-			
-			var injectionPoint:PropertyInjectionPoint = new PropertyInjectionPoint(mappingId, propertyName, optional, injectParameters);
-			description.addInjectionPoint(injectionPoint);
-			
 		}
-		
-		// FIX
-		/*for (var node:Xml in _currentFactoryXML.*.
-				(name() == 'variable' || name() == 'accessor').metadata.(@name == 'Inject'))
-		{
-			var mappingId:String =
-					node.parent().@type + '|' + node.arg.(@key == 'name').attribute('value');
-			var propertyName:String = node.parent().@name;
-			var injectParameters:Map<Dynamic,Dynamic> = extractNodeParameters(node.arg);
-			var injectionPoint:PropertyInjectionPoint = new PropertyInjectionPoint(mappingId,
-				propertyName, injectParameters.optional == 'true', injectParameters);
-			description.addInjectionPoint(injectionPoint);
-		}*/
 	}
 
 	private function addMethodInjectionPoints(description:TypeDescription, type:Class<Dynamic>):Void
