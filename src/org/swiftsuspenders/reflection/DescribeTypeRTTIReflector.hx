@@ -169,7 +169,6 @@ class DescribeTypeRTTIReflector implements Reflector
 		#else 
 			var type:Class<Dynamic> = _type;
 		#end
-		
 		rtti = untyped type.__rtti;
 		if (rtti == null) {
 			var _isInterface = isInterface(type);
@@ -177,6 +176,7 @@ class DescribeTypeRTTIReflector implements Reflector
 			
 			if (!_isInterface && !_inWhitelist) {
 				//trace("Warning: " + CallProxy.getClassName(type) + " missing @:rtti matadata");
+				return null;
 			}
 		}
 		
